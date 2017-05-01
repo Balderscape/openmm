@@ -1,0 +1,167 @@
+#---------------------------------------------------
+# OpenMM HDMD Plugin
+#
+# Creates OpenMMHDMD plugin library.
+#
+# Windows:
+#   OpenMMHDMD.dll
+#   OpenMMHDMD.lib
+#   OpenMMHDMD_static.lib
+# Unix:
+#   libOpenMMHDMD.so
+#   libOpenMMHDMD_static.a
+#----------------------------------------------------
+
+#INCLUDE(Dart)
+
+# The source is organized into subdirectories, but we handle them all from
+# this CMakeLists file rather than letting CMake visit them as SUBDIRS.
+SET(OPENMM_HDMD_PLUGIN_SOURCE_SUBDIRS . openmmapi)
+
+# Collect up information about the version of the OpenMM library we're building
+# and make it available to the code so it can be built into the binaries.
+
+SET(OPENMM_HDMD_LIBRARY_NAME OpenMMHDMD)
+SET(OPENMM_HDMD_MAJOR_VERSION 1)
+SET(OPENMM_HDMD_MINOR_VERSION 0)
+SET(OPENMM_HDMD_BUILD_VERSION 0)
+
+ADD_DEFINITIONS(-DOPENMM_HDMD_LIBRARY_NAME=${OPENMM_HDMD_LIBRARY_NAME}
+                -DOPENMM_HDMD_MAJOR_VERSION=${OPENMM_HDMD_MAJOR_VERSION}
+                -DOPENMM_HDMD_MINOR_VERSION=${OPENMM_HDMD_MINOR_VERSION}
+		        -DOPENMM_HDMD_BUILD_VERSION=${OPENMM_HDMD_BUILD_VERSION})
+
+SET(SHARED_HDMD_TARGET ${OPENMM_HDMD_LIBRARY_NAME})
+SET(STATIC_HDMD_TARGET ${OPENMM_HDMD_LIBRARY_NAME}_static)
+
+# These are all the places to search for header files which are
+# to be part of the API.
+SET(API_HDMD_INCLUDE_DIRS) # start empty
+FOREACH(subdir ${OPENMM_HDMD_PLUGIN_SOURCE_SUBDIRS})
+    # append
+    SET(API_HDMD_INCLUDE_DIRS ${API_HDMD_INCLUDE_DIRS}
+                                     ${CMAKE_CURRENT_SOURCE_DIR}/${subdir}/include
+                                     ${CMAKE_CURRENT_SOURCE_DIR}/${subdir}/include/internal)
+ENDFOREACH(subdir)
+
+# We'll need both *relative* path names, starting with their API_INCLUDE_DIRS,
+# and absolute pathnames.
+SET(API_HDMD_REL_INCLUDE_FILES)   # start these out empty
+SET(API_HDMD_ABS_INCLUDE_FILES)
+
+FOREACH(dir ${API_HDMD_INCLUDE_DIRS})
+    FILE(GLOB fullpaths ${dir}/*.h)	# returns full pathnames
+    SET(API_HDMD_ABS_INCLUDE_FILES ${API_HDMD_ABS_INCLUDE_FILES} ${fullpaths})
+
+    FOREACH(pathname ${fullpaths})
+        GET_FILENAME_COMPONENT(filename ${pathname} NAME)
+        SET(API_HDMD_REL_INCLUDE_FILES ${API_HDMD_REL_INCLUDE_FILES} ${dir}/${filename})
+    ENDFOREACH(pathname)
+ENDFOREACH(dir)
+
+# collect up source files
+SET(SOURCE_HDMD_FILES) # empty
+SET(SOURCE_HDMD_INCLUDE_FILES)
+
+FOREACH(subdir ${OPENMM_HDMD_PLUGIN_SOURCE_SUBDIRS})
+    FILE(GLOB src_files  ${CMAKE_CURRENT_SOURCE_DIR}/${subdir}/src/*.cpp ${CMAKE_CURRENT_SOURCE_DIR}/${subdir}/src/*/*.cpp)
+    FILE(GLOB incl_files ${CMAKE_CURRENT_SOURCE_DIR}/${subdir}/src/*.h)
+    SET(SOURCE_HDMD_FILES         ${SOURCE_HDMD_FILES}         ${src_files})   #append
+    SET(SOURCE_HDMD_INCLUDE_FILES ${SOURCE_HDMD_INCLUDE_FILES} ${incl_files})
+
+    ## Make sure we find these locally before looking in OpenMM/include if
+    ## OpenMM was previously installed there.
+    INCLUDE_DIRECTORIES(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/${subdir}/include)
+ENDFOREACH(subdir)
+
+# ----------------------------------------------------------------------------
+
+# If API_HDMD wrappers are being generated, and add them to the build.
+#IF(OPENMM_BUILD_C_AND_FORTRAN_WRAPPERS)
+#    ADD_SUBDIRECTORY(wrappers)
+#    SET(SOURCE_HDMD_FILES ${SOURCE_HDMD_FILES} wrappers/HDMDOpenMMCWrapper.cpp  wrappers/HDMDOpenMMFortranWrapper.cpp)
+#    SET_SOURCE_FILES_PROPERTIES(wrappers/HDMDOpenMMCWrapper.cpp wrappers/HDMDOpenMMFortranWrapper.cpp PROPERTIES GENERATED TRUE)
+#ENDIF(OPENMM_BUILD_C_AND_FORTRAN_WRAPPERS)
+
+INCLUDE_DIRECTORIES(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+ADD_LIBRARY(${SHARED_HDMD_TARGET} SHARED ${SOURCE_HDMD_FILES} ${SOURCE_HDMD_INCLUDE_FILES} ${API_HDMD_ABS_INCLUDE_FILES})
+SET_TARGET_PROPERTIES(${SHARED_HDMD_TARGET} PROPERTIES LINK_FLAGS "${EXTRA_LINK_FLAGS}" COMPILE_FLAGS "${EXTRA_COMPILE_FLAGS} -DOPENMM_HDMD_BUILDING_SHARED_LIBRARY -DLEPTON_BUILDING_SHARED_LIBRARY")
+
+#FILE(GLOB serialization_files  ${CMAKE_CUURENT_SOURCE_DIR}/serialization/src/*.cpp)
+#SET_SOURCE_FILES_PROPERTIES(${serialization_files} PROPERTIES COMPILE_FLAGS "-DOPENMM_HDMD_BUILDING_SHARED_LIBRARY -DTIXML_USE_STL")
+
+IF(OPENMM_BUILD_STATIC_LIB)
+  ADD_LIBRARY(${STATIC_HDMD_TARGET} STATIC ${SOURCE_HDMD_FILES} ${SOURCE_HDMD_INCLUDE_FILES} ${API_HDMD_ABS_INCLUDE_FILES})
+  SET_TARGET_PROPERTIES(${STATIC_HDMD_TARGET} PROPERTIES LINK_FLAGS "${EXTRA_LINK_FLAGS}" COMPILE_FLAGS "${EXTRA_COMPILE_FLAGS} -DOPENMM_HDMD_BUILDING_STATIC_LIBRARY -DOPENMM_USE_STATIC_LIBRARIES -DOPENMM_BUILDING_STATIC_LIBRARY -DLEPTON_USE_STATIC_LIBRARIES -DLEPTON_BUILDING_STATIC_LIBRARY")
+ENDIF(OPENMM_BUILD_STATIC_LIB)
+
+#IF(OPENMM_BUILD_C_AND_FORTRAN_WRAPPERS)
+#    ADD_DEPENDENCIES(${SHARED_HDMD_TARGET} HDMDApiWrappers)
+#    IF(OPENMM_BUILD_STATIC_LIB)
+#        ADD_DEPENDENCIES(${STATIC_HDMD_TARGET} HDMDApiWrappers)
+#    ENDIF(OPENMM_BUILD_STATIC_LIB)
+#ENDIF(OPENMM_BUILD_C_AND_FORTRAN_WRAPPERS)
+
+# ----------------------------------------------------------------------------
+
+# On Linux need to link to libdl
+FIND_LIBRARY(DL_LIBRARY dl)
+IF(DL_LIBRARY)
+  TARGET_LINK_LIBRARIES(${SHARED_HDMD_TARGET} ${DL_LIBRARY})
+  IF(OPENMM_BUILD_STATIC_LIB)
+    TARGET_LINK_LIBRARIES(${STATIC_HDMD_TARGET} ${DL_LIBRARY})
+  ENDIF(OPENMM_BUILD_STATIC_LIB)
+ENDIF(DL_LIBRARY)
+
+SET( OpenMMLib OpenMM )
+
+TARGET_LINK_LIBRARIES( ${SHARED_HDMD_TARGET} ${SHARED_TARGET} )
+IF(OPENMM_BUILD_STATIC_LIB)
+    TARGET_LINK_LIBRARIES( ${STATIC_HDMD_TARGET} ${STATIC_TARGET} )
+ENDIF(OPENMM_BUILD_STATIC_LIB)
+
+# Which hardware platforms to build
+
+ADD_SUBDIRECTORY(platforms/reference)
+
+#IF(OPENMM_BUILD_CUDA_LIB)
+#    SET(OPENMM_BUILD_HDMD_CUDA_LIB ON CACHE BOOL "Build OpenMMHDMDCuda library for Nvidia GPUs")
+#ELSE(OPENMM_BUILD_CUDA_LIB)
+#    SET(OPENMM_BUILD_HDMD_CUDA_LIB OFF CACHE BOOL "Build OpenMMHDMDCuda library for Nvidia GPUs")
+#ENDIF(OPENMM_BUILD_CUDA_LIB)
+
+SET(OPENMM_BUILD_HDMD_PATH)
+#SET(OPENMM_BUILD_HDMD_CUDA_PATH)
+#IF(OPENMM_BUILD_HDMD_CUDA_LIB)
+#    ADD_SUBDIRECTORY(platforms/cuda)
+#    SET(OPENMM_BUILD_HDMD_CUDA_PATH ${CMAKE_CURRENT_SOURCE_DIR}/platforms/cuda)
+#    SET(OPENMM_HDMD_CUDA_SOURCE_SUBDIRS . openmmapi olla platforms/cuda)
+#ENDIF(OPENMM_BUILD_HDMD_CUDA_LIB)
+
+INSTALL_TARGETS(/lib RUNTIME_DIRECTORY /lib ${SHARED_HDMD_TARGET})
+IF(OPENMM_BUILD_STATIC_LIB)
+  INSTALL_TARGETS(/lib RUNTIME_DIRECTORY /lib ${STATIC_HDMD_TARGET})
+ENDIF(OPENMM_BUILD_STATIC_LIB)
+FILE(GLOB CORE_HEADERS     include/*.h          */include/*.h)
+FILE(GLOB TOP_HEADERS      include/openmm/*.h          */include/openmm/*.h)
+FILE(GLOB INTERNAL_HEADERS include/openmm/internal/*.h */include/openmm/internal/*.h )
+INSTALL_FILES(/include                 FILES ${CORE_HEADERS})
+INSTALL_FILES(/include/openmm          FILES ${TOP_HEADERS})
+INSTALL_FILES(/include/openmm/internal FILES ${INTERNAL_HEADERS})
+
+#
+# Testing
+#
+
+ENABLE_TESTING()
+
+IF (EXECUTABLE_OUTPUT_PATH)
+  SET (TEST_PATH ${EXECUTABLE_OUTPUT_PATH})
+ELSE (EXECUTABLE_OUTPUT_PATH)
+  SET (TEST_PATH .)
+ENDIF (EXECUTABLE_OUTPUT_PATH)
+
+#IF(BUILD_TESTING AND OPENMM_BUILD_SERIALIZATION_TESTS)
+#    ADD_SUBDIRECTORY(serialization/tests)
+#ENDIF(BUILD_TESTING AND OPENMM_BUILD_SERIALIZATION_TESTS)

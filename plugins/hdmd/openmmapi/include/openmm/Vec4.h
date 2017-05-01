@@ -47,13 +47,13 @@ public:
     /**
      * Create a Vec4 whose elements are all 0.
      */
-    Vec3() {
+    Vec4() {
         data[0] = data[1] = data[2] = data[3] = 0.0;
     }
     /**
      * Create a Vec4 with specified x, y, and z components.
      */
-    Vec3(double x, double y, double z, double w) {
+    Vec4(double x, double y, double z, double w) {
         data[0] = x;
         data[1] = y;
         data[2] = z;
